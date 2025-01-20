@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdlib>  // Für strtof
+#include <cstdlib>  // strtof
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
@@ -17,14 +17,15 @@ class STM32NTCUARTSensor : public Component,
   }
 
   void loop() override {
-    // UART-Daten sammeln
+    // UART-Daten Zeichen für Zeichen einlesen
     while (this->available()) {
       char c = this->read();
+      // Zeilenende erkannt -> gesamte Zeile verarbeiten
       if (c == '\n') {
-        // Zeilenende -> Zeile verarbeiten
         process_line_(read_buffer_);
         read_buffer_.clear();
       } else {
+        // Sonst Zeichen an den Puffer hängen
         read_buffer_.push_back(c);
       }
     }
@@ -33,48 +34,46 @@ class STM32NTCUARTSensor : public Component,
  protected:
   std::string read_buffer_;
 
+  /// Zeile verarbeiten
   void process_line_(const std::string &line) {
     if (line.empty()) {
       ESP_LOGW("stm32_ntc_uart", "Leere Zeile, nichts zu parsen.");
       return;
     }
 
-    // Beispiel: nimm nur den Teil vor dem ersten Komma
+    // 1) Nur den Teil bis zum ersten Komma herausziehen – falls kein Komma existiert, nimm die ganze Zeile
     auto pos = line.find(',');
-    std::string first_value_str;
-    if (pos == std::string::npos) {
-      first_value_str = line;
-    } else {
-      first_value_str = line.substr(0, pos);
+    std::string raw_value_str =
+        (pos == std::string::npos) ? line : line.substr(0, pos);
+
+    // 2) Säubere den String von Zeichen, die nicht zum Float-Parsing gehören
+    //    Erlaubt sind nur Ziffern, +, -, und '.'
+    std::string sanitized;
+    sanitized.reserve(raw_value_str.size());
+    for (char c : raw_value_str) {
+      if ((c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-') {
+        sanitized.push_back(c);
+      }
     }
 
-    // Parsen ohne Exceptions
-    bool success;
-    float value = parse_float_(first_value_str, &success);
-    if (!success) {
-      ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", first_value_str.c_str());
+    if (sanitized.empty()) {
+      ESP_LOGW("stm32_ntc_uart", "Kein Zahlenwert in '%s'", raw_value_str.c_str());
       return;
     }
 
-    // Falls alles gut: publish
-    ESP_LOGD("stm32_ntc_uart", "Erster Wert: %.2f °C", value);
-    this->publish_state(value);
-  }
-
-  /// Hilfsfunktion: Parst 'str' via strtof. Gibt via *ok=true zurück, wenn es geklappt hat.
-  float parse_float_(const std::string &str, bool *ok) {
-    // strtof bricht beim ersten ungültigen Zeichen ab
-    // endptr zeigt dann auf die Stelle, ab der nicht mehr geparsed werden konnte
+    // 3) Versuche, den bereinigten String als Float zu interpretieren
     char *endptr = nullptr;
-    float val = std::strtof(str.c_str(), &endptr);
+    float value = std::strtof(sanitized.c_str(), &endptr);
 
-    // endptr == str.c_str() -> Keine gültige Zahl geparst
-    if (endptr == str.c_str()) {
-      *ok = false;
-    } else {
-      *ok = true;
+    // endptr == sanitized.c_str() bedeutet, dass keine gültige Zahl geparst wurde
+    if (endptr == sanitized.c_str()) {
+      ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", sanitized.c_str());
+      return;
     }
-    return val;
+
+    // 4) Wert veröffentlichen
+    ESP_LOGD("stm32_ntc_uart", "Gelesener Wert: %.2f °C (ganze Zeile: '%s')", value, line.c_str());
+    this->publish_state(value);
   }
 };
 
