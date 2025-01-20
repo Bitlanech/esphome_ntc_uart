@@ -3,8 +3,11 @@
 
 #include "esphome.h"
 
+namespace esphome {
+namespace stm32_ntc_uart {
+
 class STM32NTCUART : public Component, public UARTDevice {
- public:
+public:
   STM32NTCUART(UARTComponent *parent) : UARTDevice(parent) {}
 
   void setup() override {
@@ -18,7 +21,7 @@ class STM32NTCUART : public Component, public UARTDevice {
     }
   }
 
- private:
+private:
   void process_data(const std::string &data) {
     // Daten verarbeiten (CSV-Parsing)
     std::vector<float> temperatures;
@@ -39,5 +42,8 @@ class STM32NTCUART : public Component, public UARTDevice {
     }
   }
 };
+
+}
+}
 
 #endif
