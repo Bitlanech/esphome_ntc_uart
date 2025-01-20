@@ -1,4 +1,4 @@
-#ifndef STM32_NTC_UART_H
+/*#ifndef STM32_NTC_UART_H
 #define STM32_NTC_UART_H
 
 #include "esphome.h"
@@ -47,3 +47,57 @@ private:
 }
 
 #endif
+*/
+
+#pragma once
+
+#include "esphome/core/component.h"
+#include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
+
+// Wir definieren einen Namespace, damit ESPHome-Codegen dich findet:
+namespace esphome {
+namespace stm32_ntc_uart {
+
+class STM32NTCUART : public Component,      // Komponente, damit setup()/loop() aufgerufen werden
+                     public uart::UARTDevice, // UART-„Abhängigkeit“ in ESPHome
+                     public sensor::Sensor    // Wir verhalten uns wie ein einzelner Sensor
+{
+ public:
+  // Konstruktor bekommt das UART-Objekt
+  explicit STM32NTCUART(uart::UARTComponent *parent) : UARTDevice(parent) {}
+
+  void setup() override {
+    // Falls du bei Start noch init-Code brauchst ...
+  }
+
+  void loop() override {
+    // Hier liest du z. B. zeilenweise von UART
+    while (this->available()) {
+      char c = this->read();
+      if (c == '\n') {
+        // Zeile parsen → float-Wert
+        float value = parse_line_(buffer_);
+        // Sensor-Messwert veröffentlichen
+        this->publish_state(value);
+        // Puffer zurücksetzen
+        buffer_.clear();
+      } else {
+        buffer_.push_back(c);
+      }
+    }
+  }
+
+ protected:
+  // Beispiel: Minimale Funktion, um aus dem empfangenen String (buffer_) eine Zahl zu generieren
+  float parse_line_(const std::string &line) {
+    // Dein Parser. Hier nur Fake: immer 21.5
+    return 21.5f; 
+  }
+
+  // Wir sammeln hier Zeichen bis zum nächsten \n
+  std::string buffer_;
+};
+
+}  // namespace stm32_ntc_uart
+}  // namespace esphome
