@@ -9,24 +9,17 @@ from esphome.const import (
     UNIT_CELSIUS,
 )
 
-# Wir brauchen UART
+PLATFORMS = ["sensor"]
 DEPENDENCIES = ["uart"]
 
-# (Optional) Codeowner
-CODEOWNERS = ["@DeinGitHubUser"]
-
-# Namespace anlegen (muss zum C++-Namespace passen)
 stm32_ntc_uart_ns = cg.esphome_ns.namespace("stm32_ntc_uart")
-
-# C++-Klasse (Name muss zur .h-Datei passen)
 STM32NTCUARTSensor = stm32_ntc_uart_ns.class_(
     "STM32NTCUARTSensor",
-    cg.Component,
-    uart.UARTDevice,
-    sensor.Sensor,
+    cg.Component,       # Erbt von esphome::Component
+    uart.UARTDevice,    # Erbt von esphome::uart::UARTDevice
+    sensor.Sensor       # Erbt von esphome::sensor::Sensor
 )
 
-# YAML-Konfigschema:
 CONFIG_SCHEMA = sensor.sensor_schema(
     STM32NTCUARTSensor,
     unit_of_measurement=UNIT_CELSIUS,
@@ -39,8 +32,15 @@ CONFIG_SCHEMA = sensor.sensor_schema(
 }).extend(uart.UART_DEVICE_SCHEMA)
 
 
-def to_code(config):
+async def to_code(config):
+    # 1) Erzeuge/„declariere” das C++-Objekt
     var = cg.new_Pvariable(config[CONF_ID])
-    cg.register_component(var, config)
-    cg.register_uart_device(var, config)
-    sensor.register_sensor(var, config)
+
+    # 2) Registriere es als Komponente (setup() / loop())
+    yield cg.register_component(var, config)
+
+    # 3) Registriere es als UART-Device
+    yield uart.register_uart_device(var, config)
+
+    # 4) Registriere es als Sensor (publish_state, Name etc.)
+    yield sensor.register_sensor(var, config)
