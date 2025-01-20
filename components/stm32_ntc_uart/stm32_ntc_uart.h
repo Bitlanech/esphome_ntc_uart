@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdlib>  // Für strtof
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
@@ -16,11 +17,11 @@ class STM32NTCUARTSensor : public Component,
   }
 
   void loop() override {
-    // Zeichen vom UART sammeln
+    // UART-Daten sammeln
     while (this->available()) {
       char c = this->read();
       if (c == '\n') {
-        // Zeilenende -> verarbeiten
+        // Zeilenende -> Zeile verarbeiten
         process_line_(read_buffer_);
         read_buffer_.clear();
       } else {
@@ -34,32 +35,46 @@ class STM32NTCUARTSensor : public Component,
 
   void process_line_(const std::string &line) {
     if (line.empty()) {
-      ESP_LOGW("stm32_ntc_uart", "Empfangene Zeile ist leer, wird ignoriert.");
+      ESP_LOGW("stm32_ntc_uart", "Leere Zeile, nichts zu parsen.");
       return;
     }
 
-    // Nur den Teil vor dem ersten Komma verwenden
-    // Beispiel: "25.4,blabla" -> wir interpretieren nur "25.4" als Float
+    // Beispiel: nimm nur den Teil vor dem ersten Komma
     auto pos = line.find(',');
     std::string first_value_str;
     if (pos == std::string::npos) {
-      // Kein Komma in der Zeile -> gesamte Zeile als Wert
       first_value_str = line;
     } else {
-      // Substring von Anfang bis Komma
       first_value_str = line.substr(0, pos);
     }
 
-    // Jetzt versuchen, das als Float zu interpretieren
-    try {
-      float value = std::stof(first_value_str);
-      ESP_LOGD("stm32_ntc_uart", "Erster Temperaturwert: %.2f °C", value);
-      this->publish_state(value);
-    } catch (...) {
+    // Parsen ohne Exceptions
+    bool success;
+    float value = parse_float_(first_value_str, &success);
+    if (!success) {
       ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", first_value_str.c_str());
+      return;
     }
 
-    // Alles hinter dem ersten Komma bleibt unberücksichtigt.
+    // Falls alles gut: publish
+    ESP_LOGD("stm32_ntc_uart", "Erster Wert: %.2f °C", value);
+    this->publish_state(value);
+  }
+
+  /// Hilfsfunktion: Parst 'str' via strtof. Gibt via *ok=true zurück, wenn es geklappt hat.
+  float parse_float_(const std::string &str, bool *ok) {
+    // strtof bricht beim ersten ungültigen Zeichen ab
+    // endptr zeigt dann auf die Stelle, ab der nicht mehr geparsed werden konnte
+    char *endptr = nullptr;
+    float val = std::strtof(str.c_str(), &endptr);
+
+    // endptr == str.c_str() -> Keine gültige Zahl geparst
+    if (endptr == str.c_str()) {
+      *ok = false;
+    } else {
+      *ok = true;
+    }
+    return val;
   }
 };
 
