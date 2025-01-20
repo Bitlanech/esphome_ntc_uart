@@ -7,7 +7,6 @@
 namespace esphome {
 namespace stm32_ntc_uart {
 
-// Klassenname: STM32NTCUARTSensor (entspricht dem in sensor.py)
 class STM32NTCUARTSensor : public Component,
                            public uart::UARTDevice,
                            public sensor::Sensor {
@@ -17,21 +16,51 @@ class STM32NTCUARTSensor : public Component,
   }
 
   void loop() override {
-    // Beispiel: UART-Daten einfach einlesen
+    // Zeichen vom UART sammeln
     while (this->available()) {
       char c = this->read();
-      // Hier kannst du z.B. in einen Buffer schreiben und parsen
-    }
-
-    // Publish einen Dummy-Wert alle 10 Sek
-    if (millis() - last_update_ > 10000) {
-      last_update_ = millis();
-      this->publish_state(42.0f);  // DUMMY: 42°C
+      if (c == '\n') {
+        // Zeilenende -> verarbeiten
+        process_line_(read_buffer_);
+        read_buffer_.clear();
+      } else {
+        read_buffer_.push_back(c);
+      }
     }
   }
 
  protected:
-  unsigned long last_update_{0};
+  std::string read_buffer_;
+
+  void process_line_(const std::string &line) {
+    if (line.empty()) {
+      ESP_LOGW("stm32_ntc_uart", "Empfangene Zeile ist leer, wird ignoriert.");
+      return;
+    }
+
+    // Nur den Teil vor dem ersten Komma verwenden
+    // Beispiel: "25.4,blabla" -> wir interpretieren nur "25.4" als Float
+    auto pos = line.find(',');
+    std::string first_value_str;
+    if (pos == std::string::npos) {
+      // Kein Komma in der Zeile -> gesamte Zeile als Wert
+      first_value_str = line;
+    } else {
+      // Substring von Anfang bis Komma
+      first_value_str = line.substr(0, pos);
+    }
+
+    // Jetzt versuchen, das als Float zu interpretieren
+    try {
+      float value = std::stof(first_value_str);
+      ESP_LOGD("stm32_ntc_uart", "Erster Temperaturwert: %.2f °C", value);
+      this->publish_state(value);
+    } catch (...) {
+      ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", first_value_str.c_str());
+    }
+
+    // Alles hinter dem ersten Komma bleibt unberücksichtigt.
+  }
 };
 
 }  // namespace stm32_ntc_uart
