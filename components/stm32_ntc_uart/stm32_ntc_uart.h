@@ -1,6 +1,5 @@
 #pragma once
 
-#include <vector>
 #include <cstdlib>  // strtof
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
@@ -9,105 +8,72 @@
 namespace esphome {
 namespace stm32_ntc_uart {
 
-// 1. Sub-Sensor-Klasse, erbt von sensor::Sensor
-class MySubSensor : public sensor::Sensor {
+class STM32NTCUARTSensor : public Component,
+                           public uart::UARTDevice,
+                           public sensor::Sensor {
  public:
-  // Parameterloser Konstruktor
-  MySubSensor() {
-    // Optional: Logging oder andere Initialisierung
-    // ESP_LOGD("mysubsensor", "MySubSensor Konstruktor aufgerufen");
-  }
-};
-
-// 2. Hauptklasse zur Verwaltung mehrerer Sub-Sensoren
-class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
- public:
-  // Methode zum Hinzufügen von Sub-Sensoren
-  void add_sensor(sensor::Sensor *s) {
-    this->sensors_.push_back(s);
-  }
-
   void setup() override {
-    ESP_LOGI("stm32_ntc_uart", "Setup done. Anzahl Sensoren: %d", (int)this->sensors_.size());
+    ESP_LOGI("stm32_ntc_uart", "STM32NTCUARTSensor setup done");
   }
 
   void loop() override {
+    // UART-Daten Zeichen für Zeichen einlesen
     while (this->available()) {
       char c = this->read();
+      // Zeilenende erkannt -> gesamte Zeile verarbeiten
       if (c == '\n') {
-        process_line_(this->read_buffer_);
-        this->read_buffer_.clear();
+        process_line_(read_buffer_);
+        read_buffer_.clear();
       } else {
-        this->read_buffer_.push_back(c);
+        // Sonst Zeichen an den Puffer hängen
+        read_buffer_.push_back(c);
       }
     }
   }
 
  protected:
   std::string read_buffer_;
-  std::vector<sensor::Sensor *> sensors_;
 
-  // Funktion zum Verarbeiten der empfangenen Zeile
+  /// Zeile verarbeiten
   void process_line_(const std::string &line) {
     if (line.empty()) {
-      ESP_LOGW("stm32_ntc_uart", "Leere Zeile empfangen, ignorieren.");
+      ESP_LOGW("stm32_ntc_uart", "Leere Zeile, nichts zu parsen.");
       return;
     }
 
-    // Zeile an Semikolon trennen
-    std::vector<std::string> tokens;
-    size_t start = 0;
-    while (true) {
-      size_t pos = line.find(';', start);
-      if (pos == std::string::npos) {
-        tokens.push_back(line.substr(start));
-        break;
-      } else {
-        tokens.push_back(line.substr(start, pos - start));
-        start = pos + 1;
-      }
-    }
+    // 1) Nur den Teil bis zum ersten Komma herausziehen – falls kein Komma existiert, nimm die ganze Zeile
+    auto pos = line.find(',');
+    std::string raw_value_str =
+        (pos == std::string::npos) ? line : line.substr(0, pos);
 
-    // Anzahl der zu verarbeitenden Sensoren
-    size_t count = std::min(tokens.size(), sensors_.size());
-
-    for (size_t i = 0; i < count; i++) {
-      float value;
-      if (parse_float_(tokens[i], value)) {
-        ESP_LOGD("stm32_ntc_uart", "Sensor #%d: %.2f (Token: '%s')",
-                 (int)(i + 1), value, tokens[i].c_str());
-        sensors_[i]->publish_state(value);
-      } else {
-        ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' (Sensor %d)",
-                 tokens[i].c_str(), (int)(i + 1));
-      }
-    }
-
-    // Überzählige Tokens ignorieren
-  }
-
-  // Hilfsfunktion zum Parsen eines Floats ohne Exceptions
-  bool parse_float_(const std::string &raw, float &out_val) {
-    // Unerwünschte Zeichen entfernen
+    // 2) Säubere den String von Zeichen, die nicht zum Float-Parsing gehören
+    //    Erlaubt sind nur Ziffern, +, -, und '.'
     std::string sanitized;
-    sanitized.reserve(raw.size());
-    for (char c : raw) {
-      if ((c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-')
+    sanitized.reserve(raw_value_str.size());
+    for (char c : raw_value_str) {
+      if ((c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-') {
         sanitized.push_back(c);
-    }
-    if (sanitized.empty()) {
-      return false;
+      }
     }
 
-    // strtof zum Parsen verwenden
-    char *endptr = nullptr;
-    float val = std::strtof(sanitized.c_str(), &endptr);
-    if (endptr == sanitized.c_str()) {
-      // Keine gültige Zahl geparst
-      return false;
+    if (sanitized.empty()) {
+      ESP_LOGW("stm32_ntc_uart", "Kein Zahlenwert in '%s'", raw_value_str.c_str());
+      return;
     }
-    out_val = val;
-    return true;
+
+    // 3) Versuche, den bereinigten String als Float zu interpretieren
+    char *endptr = nullptr;
+    float value = std::strtof(sanitized.c_str(), &endptr);
+
+    // endptr == sanitized.c_str() bedeutet, dass keine gültige Zahl geparst wurde
+    if (endptr == sanitized.c_str()) {
+      ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", sanitized.c_str());
+      return;
+    }
+
+    // 4) Wert veröffentlichen
+    ESP_LOGD("stm32_ntc_uart", "Gelesener Wert: %.2f °C (ganze Zeile: '%s')", value, line.c_str());
+    this->publish_state(value);
   }
 };
 
