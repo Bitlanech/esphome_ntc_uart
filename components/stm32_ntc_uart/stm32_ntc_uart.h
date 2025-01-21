@@ -12,14 +12,12 @@ namespace stm32_ntc_uart {
 // 1. Sub-Sensor-Klasse
 class MySubSensor : public sensor::Sensor {
  public:
-  // Parameterloser Konstruktor
   MySubSensor() {
     // Optional: Logging oder Initialisierung
-    // ESP_LOGD("mysubsensor", "MySubSensor Konstruktor aufgerufen");
   }
 };
 
-// 2. Hauptklasse
+// 2. Hauptklasse mit festgelegter Anzahl von Sensoren
 class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
  public:
   void add_sensor(sensor::Sensor *s) {
