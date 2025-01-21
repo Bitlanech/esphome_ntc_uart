@@ -27,7 +27,7 @@ STM32NTCUARTMulti = stm32_ntc_uart_ns.class_(
 STM32NTCUARTMulti.add_method(
     "add_sensor",
     cg.void,
-    [sensor.Sensor.operator("ptr")]
+    [sensor.Sensor.operator("ptr")]  # sensor::Sensor* Parameter
 )
 
 # 5. Schema für Sub-Sensoren definieren
@@ -52,12 +52,13 @@ async def to_code(config):
     for i, sconf in enumerate(config["sensors"]):
         # Falls kein 'id' angegeben ist, automatisch generieren
         if CONF_ID not in sconf:
-            sconf[CONF_ID] = cg.new_id(MySubSensor)
+            # Generiere einen eindeutigen ID-Namen
+            sconf[CONF_ID] = cg.declare_id(MySubSensor)(f"auto_sub_sensor_{i}")
 
         sub_id = sconf[CONF_ID]
 
         # Sub-Sensor-Objekt erstellen (parameterloser Konstruktor)
-        sub_sensor = cg.new_Pvariable(sub_id, MySubSensor)
+        sub_sensor = cg.new_Pvariable(sub_id, MySubSensor, [])
 
         # Sensor-Konfiguration anwenden (Name, Einheit etc.)
         await sensor.register_sensor(sub_sensor, sconf)

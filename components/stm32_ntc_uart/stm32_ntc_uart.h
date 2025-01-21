@@ -12,21 +12,23 @@ namespace stm32_ntc_uart {
 // 1. Sub-Sensor-Klasse
 class MySubSensor : public sensor::Sensor {
  public:
+  // Parameterloser Konstruktor
   MySubSensor() {
-    // Optional: Logging oder Initialisierung
+    // Optional: Logging oder andere Initialisierung
+    // ESP_LOGD("mysubsensor", "MySubSensor Konstruktor aufgerufen");
   }
 };
 
-// 2. Hauptklasse mit festgelegter Anzahl von Sensoren
+// 2. Hauptklasse zur Verwaltung mehrerer Sub-Sensoren
 class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
  public:
+  // Methode zum Hinzufügen von Sub-Sensoren
   void add_sensor(sensor::Sensor *s) {
     this->sensors_.push_back(s);
   }
 
   void setup() override {
-    ESP_LOGI("stm32_ntc_uart", "Setup done. Anzahl Sensoren: %d",
-             (int)this->sensors_.size());
+    ESP_LOGI("stm32_ntc_uart", "Setup done. Anzahl Sensoren: %d", (int)this->sensors_.size());
   }
 
   void loop() override {
@@ -45,6 +47,7 @@ class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
   std::string read_buffer_;
   std::vector<sensor::Sensor *> sensors_;
 
+  // Funktion zum Verarbeiten der empfangenen Zeile
   void process_line_(const std::string &line) {
     if (line.empty()) {
       ESP_LOGW("stm32_ntc_uart", "Leere Zeile empfangen, ignorieren.");
@@ -79,8 +82,11 @@ class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
                  tokens[i].c_str(), (int)(i + 1));
       }
     }
+
+    // Überzählige Tokens ignorieren
   }
 
+  // Hilfsfunktion zum Parsen eines Floats ohne Exceptions
   bool parse_float_(const std::string &raw, float &out_val) {
     // Unerwünschte Zeichen entfernen
     std::string sanitized;
