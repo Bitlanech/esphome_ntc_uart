@@ -9,47 +9,52 @@ from esphome.const import (
     UNIT_CELSIUS,
 )
 
-# Wir definieren eine Sensor-Plattform
 PLATFORMS = ["sensor"]
 DEPENDENCIES = ["uart"]
+CODEOWNERS = ["@Bitlanech"]
 
-# (Optional) wer sich kümmert
-CODEOWNERS = ["@DeinGitHubUser"]
-
-# Namespace passend zu deinem .h (z. B. namespace esphome::stm32_ntc_uart)
 stm32_ntc_uart_ns = cg.esphome_ns.namespace("stm32_ntc_uart")
 
-# Der Klassenname muss zum .h passen (z. B. class STM32NTCUARTSensor)
-STM32NTCUARTSensor = stm32_ntc_uart_ns.class_(
-    "STM32NTCUARTSensor",
-    cg.Component,       # erbt von esphome::Component
-    uart.UARTDevice,    # erbt von esphome::uart::UARTDevice
-    sensor.Sensor       # erbt von esphome::sensor::Sensor
+# Die C++-Klasse (für mehrere Sensoren)
+STM32NTCUARTMulti = stm32_ntc_uart_ns.class_(
+    "STM32NTCUARTMulti",  # Name muss zur .h passen
+    cg.Component,         # erbt nur Component + UARTDevice
+    uart.UARTDevice
 )
 
-# YAML-Konfiguration: definieren, was man angeben darf
-CONFIG_SCHEMA = sensor.sensor_schema(
-    STM32NTCUARTSensor,
-    unit_of_measurement=UNIT_CELSIUS,
-    icon=ICON_THERMOMETER,
-    accuracy_decimals=1,
-    device_class=DEVICE_CLASS_TEMPERATURE,
-    state_class=STATE_CLASS_MEASUREMENT,
-).extend({
-    cv.GenerateID(): cv.declare_id(STM32NTCUARTSensor),
+# Diese Methode erlauben wir, um Sub-Sensoren "anzuhängen"
+AddSensorMethod = STM32NTCUARTMulti.operator("add_sensor").bind(sensor.Sensor)
+
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.declare_id(STM32NTCUARTMulti),
+    cv.Optional("sensor_count", default=1): cv.int_range(min=1, max=8),
 }).extend(uart.UART_DEVICE_SCHEMA)
 
-# Asynchrone to_code-Funktion:
-# Verwende await, NICHT yield!
+# 'to_code' registriert die Multi-Klasse, legt Sub-Sensoren an und hängt sie an
 async def to_code(config):
-    # C++-Objekt anlegen
+    # 1) Haupt-C++-Objekt anlegen
     var = cg.new_Pvariable(config[CONF_ID])
-
-    # 1) Komponente registrieren (setup/loop)
     await cg.register_component(var, config)
-
-    # 2) UART registrieren
     await uart.register_uart_device(var, config)
 
-    # 3) Sensor registrieren (publish_state, name etc.)
-    await sensor.register_sensor(var, config)
+    # 2) Schleife über "sensor_count"
+    count = config["sensor_count"]
+    for i in range(count):
+        # Einen neuen Sensor anlegen
+        sub_sensor = sensor.new_sensor(
+            unit_of_measurement=UNIT_CELSIUS,
+            icon=ICON_THERMOMETER,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+            # Du kannst auch 'name' angeben, falls jeder Sensor
+            # seinen eigenen Namen in HA haben soll.
+            name=f"STM32 NTC Sensor {i+1}"
+        )
+        # sub_sensor: vom Typ sensor::Sensor
+
+        # Damit ESPHome weiß, dass wir ihn in der YAML config "drin" haben
+        await sensor.register_sensor(sub_sensor, {})
+
+        # Jetzt das Sub-Sensor-Objekt an unsere C++-Klasse anhängen
+        cg.add(var.add_sensor(sub_sensor))
