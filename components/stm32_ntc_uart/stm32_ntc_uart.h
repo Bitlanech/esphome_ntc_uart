@@ -9,7 +9,7 @@
 namespace esphome {
 namespace stm32_ntc_uart {
 
-// 1. Sub-Sensor-Klasse
+// 1. Sub-Sensor-Klasse, erbt von sensor::Sensor
 class MySubSensor : public sensor::Sensor {
  public:
   // Parameterloser Konstruktor

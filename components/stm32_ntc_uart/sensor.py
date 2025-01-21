@@ -53,12 +53,12 @@ async def to_code(config):
         # Falls kein 'id' angegeben ist, automatisch generieren
         if CONF_ID not in sconf:
             # Generiere einen eindeutigen ID-Namen
-            sconf[CONF_ID] = cg.declare_id(MySubSensor)(f"auto_sub_sensor_{i}")
+            sconf[CONF_ID] = cg.new_id(MySubSensor)
 
         sub_id = sconf[CONF_ID]
 
         # Sub-Sensor-Objekt erstellen (parameterloser Konstruktor)
-        sub_sensor = cg.new_Pvariable(sub_id, MySubSensor, [])
+        sub_sensor = cg.new_Pvariable(sub_id, MySubSensor)
 
         # Sensor-Konfiguration anwenden (Name, Einheit etc.)
         await sensor.register_sensor(sub_sensor, sconf)
