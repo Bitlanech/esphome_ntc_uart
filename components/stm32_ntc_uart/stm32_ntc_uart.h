@@ -1,40 +1,44 @@
 #pragma once
 
 #include <vector>
+#include <cstdlib>
 #include "esphome/core/component.h"
-#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
 
 namespace esphome {
 namespace stm32_ntc_uart {
 
-// 1) Abgeleitete Klasse MySubSensor
-//    Sie hat implizit einen Standardkonstruktor und erbt von sensor::Sensor.
+// 1) Sub-Sensor-Klasse (erbt von sensor::Sensor)
 class MySubSensor : public sensor::Sensor {
  public:
-  // Leer oder custom code
+  // Expliziter, parameterloser Konstruktor (Verhinderung von Codegen-Bugs)
+  MySubSensor() {
+    // Optional: Logging oder Initialisierung
+    // ESP_LOGD("mysubsensor", "MySubSensor() Konstruktor aufgerufen");
+  }
 };
 
-// 2) Hauptklasse: Speichert Sub-Sensoren
-class STM32NTCUARTMulti : public Component,
-                          public uart::UARTDevice {
+// 2) Die Multi-Klasse, die Sub-Sensoren verwaltet
+class STM32NTCUARTMulti : public Component, public uart::UARTDevice {
  public:
+  // Diesen Funktionskopf muss Python kennen:  void add_sensor(sensor::Sensor *s)
   void add_sensor(sensor::Sensor *s) {
     this->sensors_.push_back(s);
   }
 
   void setup() override {
-    ESP_LOGI("stm32_ntc_uart", "Setup done, %d Sub-Sensor(en).",
-             (int) this->sensors_.size());
+    ESP_LOGI("stm32_ntc_uart", "Setup done: %d Sub-Sensor(en)", (int)sensors_.size());
   }
 
   void loop() override {
-    // Beispiel: Empfange UART, parse float
+    // Beispiel: bis \n einlesen
     while (this->available()) {
       char c = this->read();
       if (c == '\n') {
+        // parse float
         float val = std::strtof(buffer_.c_str(), nullptr);
-        // Alle Sub-Sensoren mit dem Wert updaten
+        // an alle Sub-Sensoren ausgeben
         for (auto *sens : sensors_) {
           sens->publish_state(val);
         }
