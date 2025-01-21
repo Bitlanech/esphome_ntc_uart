@@ -5,23 +5,22 @@ from esphome.const import CONF_ID
 
 PLATFORMS = ["sensor"]
 DEPENDENCIES = ["uart"]
-CODEOWNERS = ["@Bitlanech"]
 
 stm32_ntc_uart_ns = cg.esphome_ns.namespace("stm32_ntc_uart")
 
-# Deine C++-Klasse, die NICHT von sensor::Sensor erbt, sondern Sub-Sensoren verwaltet
+# Deine C++-Klasse: Erbt nur von Component+UARTDevice, keine direkte Sensor-Vererbung
 STM32NTCUARTMulti = stm32_ntc_uart_ns.class_(
     "STM32NTCUARTMulti",
     cg.Component,
     uart.UARTDevice
 )
 
-# Anmelden der Methode: void add_sensor(sensor::Sensor *s)
-# Achte auf .operator("ptr")!
+# Angeben, dass in C++ eine Methode existiert:
+#    void add_sensor(sensor::Sensor *s)
 AddSensorMethod = STM32NTCUARTMulti.add_method(
     "add_sensor",
     cg.void,
-    [sensor.Sensor.operator("ptr")]
+    [sensor.Sensor.operator("ptr")]  # "ptr" statt "*"
 )
 
 CONFIG_SCHEMA = cv.Schema({
@@ -30,16 +29,18 @@ CONFIG_SCHEMA = cv.Schema({
 }).extend(uart.UART_DEVICE_SCHEMA)
 
 async def to_code(config):
-    # 1) Hauptobjekt erzeugen
+    # 1) Haupt-C++-Objekt anlegen
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    # 2) Für jeden Sensor in der YAML-Liste ein Sensor-Objekt anlegen
+    # 2) Für jeden Eintrag in "sensors" ein Sub-Sensor erzeugen
     for sconf in config["sensors"]:
-        sub_sensor = await sensor.new_sensor_item(sconf)
-        # Registrieren bei ESPHome (damit publish_state(), name etc. funktionieren)
+        # a) Roh-Objekt erstellen (ohne ID)
+        sub_sensor = cg.new_Pvariable(None, sensor.Sensor)
+
+        # b) bei ESPHome "registrieren", damit Name, Filters etc. aus sconf angewendet werden
         await sensor.register_sensor(sub_sensor, sconf)
 
-        # 3) In C++ var->add_sensor(...) aufrufen
+        # c) in C++-Klasse einhängen
         cg.add(var.add_sensor(sub_sensor))

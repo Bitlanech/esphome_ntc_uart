@@ -11,13 +11,12 @@ namespace stm32_ntc_uart {
 class STM32NTCUARTMulti : public Component,
                           public uart::UARTDevice {
  public:
-  // Muss exakt so aussehen: add_sensor(sensor::Sensor *s)
   void add_sensor(sensor::Sensor *s) {
     this->sensors_.push_back(s);
   }
 
   void setup() override {
-    ESP_LOGI("stm32_ntc_uart", "STM32NTCUARTMulti: Setup, %d Sensor(en).",
+    ESP_LOGI("stm32_ntc_uart", "Setup done, habe %d Sensor(en).",
              (int) this->sensors_.size());
   }
 
@@ -25,11 +24,10 @@ class STM32NTCUARTMulti : public Component,
     while (this->available()) {
       char c = this->read();
       if (c == '\n') {
-        // Beispiel: parse float
+        // z. B. parse float und an alle Sub-Sensoren senden
         float val = std::strtof(this->read_buffer_.c_str(), nullptr);
-        // Publiziere an alle Sub-Sensoren
-        for (auto *s : this->sensors_) {
-          s->publish_state(val);
+        for (auto *sens : this->sensors_) {
+          sens->publish_state(val);
         }
         this->read_buffer_.clear();
       } else {
