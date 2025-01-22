@@ -23,20 +23,19 @@ stm32_ntc_uart_ns = cg.esphome_ns.namespace("stm32_ntc_uart")
 STM32NTCUARTSensor = stm32_ntc_uart_ns.class_(
     "STM32NTCUARTSensor",
     cg.Component,       # erbt von esphome::Component
-    uart.UARTDevice,    # erbt von esphome::uart::UARTDevice
-    sensor.Sensor       # erbt von esphome::sensor::Sensor
+    uart.UARTDevice     # erbt von esphome::uart::UARTDevice
 )
 
 # YAML-Konfiguration: definieren, was man angeben darf
-CONFIG_SCHEMA = sensor.sensor_schema(
-    STM32NTCUARTSensor,
-    unit_of_measurement=UNIT_CELSIUS,
-    icon=ICON_THERMOMETER,
-    accuracy_decimals=1,
-    device_class=DEVICE_CLASS_TEMPERATURE,
-    state_class=STATE_CLASS_MEASUREMENT,
-).extend({
+CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(STM32NTCUARTSensor),
+    cv.Optional("sensors", default=[]): cv.ensure_list(sensor.sensor_schema(
+        unit_of_measurement=UNIT_CELSIUS,
+        icon=ICON_THERMOMETER,
+        accuracy_decimals=1,
+        device_class=DEVICE_CLASS_TEMPERATURE,
+        state_class=STATE_CLASS_MEASUREMENT,
+    )),
 }).extend(uart.UART_DEVICE_SCHEMA)
 
 # Asynchrone to_code-Funktion:
@@ -51,5 +50,7 @@ async def to_code(config):
     # 2) UART registrieren
     await uart.register_uart_device(var, config)
 
-    # 3) Sensor registrieren (publish_state, name etc.)
-    await sensor.register_sensor(var, config)
+    # 3) Sensoren hinzufügen
+    for i, sensor_config in enumerate(config["sensors"]):
+        sens = await sensor.new_sensor(sensor_config)
+        cg.add(var.add_sensor(sens))

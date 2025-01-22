@@ -1,6 +1,8 @@
+stm32_ntc_uart.h:
 #pragma once
 
 #include <cstdlib>  // strtof
+#include <vector>
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
@@ -9,8 +11,7 @@ namespace esphome {
 namespace stm32_ntc_uart {
 
 class STM32NTCUARTSensor : public Component,
-                           public uart::UARTDevice,
-                           public sensor::Sensor {
+                           public uart::UARTDevice {
  public:
   void setup() override {
     ESP_LOGI("stm32_ntc_uart", "STM32NTCUARTSensor setup done");
@@ -31,8 +32,13 @@ class STM32NTCUARTSensor : public Component,
     }
   }
 
+  void add_sensor(sensor::Sensor *sensor) {
+    sensors_.push_back(sensor);
+  }
+
  protected:
   std::string read_buffer_;
+  std::vector<sensor::Sensor *> sensors_;
 
   /// Zeile verarbeiten
   void process_line_(const std::string &line) {
@@ -41,15 +47,31 @@ class STM32NTCUARTSensor : public Component,
       return;
     }
 
-    // 1) Nur den Teil bis zum ersten Komma herausziehen – falls kein Komma existiert, nimm die ganze Zeile
-    auto pos = line.find(',');
-    std::string raw_value_str =
-        (pos == std::string::npos) ? line : line.substr(0, pos);
+    // CSV-Zeile in Werte aufteilen
+    size_t start = 0;
+    size_t end = 0;
+    size_t sensor_index = 0;
 
-    // 2) Säubere den String von Zeichen, die nicht zum Float-Parsing gehören
-    //    Erlaubt sind nur Ziffern, +, -, und '.'
+    while ((end = line.find(';', start)) != std::string::npos) {
+      if (sensor_index >= sensors_.size()) {
+        ESP_LOGW("stm32_ntc_uart", "Mehr Werte als Sensoren vorhanden.");
+        break;
+      }
+
+      publish_sensor_value(line.substr(start, end - start), sensor_index);
+      start = end + 1;
+      sensor_index++;
+    }
+
+    // Letzter Wert (nach dem letzten Semikolon)
+    if (sensor_index < sensors_.size()) {
+      publish_sensor_value(line.substr(start), sensor_index);
+    }
+  }
+
+  void publish_sensor_value(const std::string &raw_value_str, size_t index) {
+    // Bereinigen und in Float konvertieren
     std::string sanitized;
-    sanitized.reserve(raw_value_str.size());
     for (char c : raw_value_str) {
       if ((c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-') {
         sanitized.push_back(c);
@@ -61,19 +83,18 @@ class STM32NTCUARTSensor : public Component,
       return;
     }
 
-    // 3) Versuche, den bereinigten String als Float zu interpretieren
     char *endptr = nullptr;
     float value = std::strtof(sanitized.c_str(), &endptr);
-
-    // endptr == sanitized.c_str() bedeutet, dass keine gültige Zahl geparst wurde
     if (endptr == sanitized.c_str()) {
       ESP_LOGW("stm32_ntc_uart", "Fehler beim Parsen von '%s' als float", sanitized.c_str());
       return;
     }
 
-    // 4) Wert veröffentlichen
-    ESP_LOGD("stm32_ntc_uart", "Gelesener Wert: %.2f °C (ganze Zeile: '%s')", value, line.c_str());
-    this->publish_state(value);
+    // Wert veröffentlichen
+    if (index < sensors_.size() && sensors_[index] != nullptr) {
+      ESP_LOGD("stm32_ntc_uart", "Sensor %d: %.2f °C", index, value);
+      sensors_[index]->publish_state(value);
+    }
   }
 };
 
