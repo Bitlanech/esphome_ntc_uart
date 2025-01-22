@@ -1,4 +1,3 @@
-stm32_ntc_uart.h:
 #pragma once
 
 #include <cstdlib>  // strtof
